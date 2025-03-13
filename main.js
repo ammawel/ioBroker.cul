@@ -107,7 +107,10 @@ function startAdapter(options) {
                         if (SerialPort) {
                             // read all found serial ports
                             SerialPort.list().then(ports => {
-                                adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
+				// hinzugefügt
+				ports.push({"path":"/dev/serial/by-id/usb-1a86_USB2.0-Serial-if00-port0"});
+				// Ende hinzu
+				adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
                                 //adapter.sendTo(obj.from, obj.command, ports, obj.callback);
                                 adapter.sendTo(obj.from, obj.command, ports.map(item => ({
                                     label: item.friendlyName || item.pnpId || item.manufacturer,
