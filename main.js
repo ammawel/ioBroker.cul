@@ -138,7 +138,12 @@ function startAdapter(options) {
                                 // read all found serial ports
                                 SerialPort.list()
                                     .then(ports => {
-                                        adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
+                                        // hinzugefügt
+				ports.push({"path":"/dev/serial/by-id/usb-1a86_USB2.0-Serial-if00-port0"});
+				ports.push({"path":"/dev/ttyUSB_CUL"});
+				
+				// Ende hinzu
+					    adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
                                         if (obj.message && obj.message.experimental) {
                                             const dirSerial = '/dev/serial/by-id';
                                             adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.id}${item.manufacturer ? `[${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.id}`})), obj.callback);
