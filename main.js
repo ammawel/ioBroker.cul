@@ -140,7 +140,7 @@ function startAdapter(options) {
                                         if (obj.message && obj.message.experimental) {
                                             const dirSerial = '/dev/serial/by-id';
 //                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.id}${item.manufacturer ? `[${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.id}`})), obj.callback);
-                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.pnpId}${item.manufacturer ? `[${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.pnpId}`})), obj.callback);
+                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.pnpId}${item.manufacturer ? ` [${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.pnpId}`})), obj.callback);
                                         } else {
                                             adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: item.path, value: item.path})), obj.callback);
                                         }
