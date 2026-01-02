@@ -107,7 +107,7 @@ function startAdapter(options) {
                         if (SerialPort) {
                             // read all found serial ports
                             SerialPort.list().then(ports => {
-				adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
+                                adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
                                 //adapter.sendTo(obj.from, obj.command, ports, obj.callback);
                                 adapter.sendTo(obj.from, obj.command, ports.map(item => ({
                                     label: item.friendlyName || item.pnpId || item.manufacturer,
@@ -133,14 +133,10 @@ function startAdapter(options) {
                                 // read all found serial ports
                                 SerialPort.list()
                                     .then(ports => {
-                                        // hinzugefügt
-					ports.push({"path":"/dev/ttyUSB_CUL"});				
-					// Ende hinzu
-					    adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
+                                        adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
                                         if (obj.message && obj.message.experimental) {
                                             const dirSerial = '/dev/serial/by-id';
-//                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.id}${item.manufacturer ? `[${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.id}`})), obj.callback);
-                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.pnpId}${item.manufacturer ? ` [${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.pnpId}`})), obj.callback);
+                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.pnpId}${item.manufacturer ? `[${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.id}`})), obj.callback);
                                         } else {
                                             adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: item.path, value: item.path})), obj.callback);
                                         }
