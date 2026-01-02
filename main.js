@@ -126,34 +126,41 @@ function startAdapter(options) {
                     }
                     break;
 
-                case 'listUart5':
-                    if (obj.callback) {
-                        try {
-                            if (SerialPort) {
-                                // read all found serial ports
-                                SerialPort.list()
-                                    .then(ports => {
-                                        adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
-                                        if (obj.message && obj.message.experimental) {
-                                            const dirSerial = '/dev/serial/by-id';
-                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: `${dirSerial}/${item.pnpId}${item.manufacturer ? `[${item.manufacturer}]` : ''}`, value: `${dirSerial}/${item.id}`})), obj.callback);
-                                        } else {
-                                            adapter.sendTo(obj.from, obj.command, ports.map(item => ({label: item.path, value: item.path})), obj.callback);
-                                        }
-                                    })
-                                    .catch(e => {
-                                        adapter.sendTo(obj.from, obj.command, [], obj.callback);
-                                        adapter.log.error(e)
-                                    });
-                            } else {
-                                adapter.log.warn('Module serialport is not available');
-                                adapter.sendTo(obj.from, obj.command, [{label: 'Not available', value: ''}], obj.callback);
-                            }
-                        } catch (e) {
-                            adapter.sendTo(obj.from, obj.command, [{label: 'Not available', value: ''}], obj.callback);
-                        }
-                    }
-                    break;
+     		case 'listUart5':
+    				if (obj.callback) {
+        				try {
+            				if (SerialPort) {
+                				SerialPort.list()
+                    				.then(ports => {
+                        				adapter.log.info(`List of port: ${JSON.stringify(ports)}`);
+
+                        				const dirSerial = '/dev/serial/by-id';
+
+                        				const result = ports.map(item => {
+                            				const id = item.serialNumber || item.pnpId || item.path;
+
+                            				return {
+                                				label: `${dirSerial}/${id}${item.manufacturer ? ` [${item.manufacturer}]` : ''}`,
+                                				value: `${dirSerial}/${id}`
+                            				};
+                        				});
+
+                        				adapter.sendTo(obj.from, obj.command, result, obj.callback);
+                    				})
+                    				.catch(e => {
+                        				adapter.sendTo(obj.from, obj.command, [], obj.callback);
+                        				adapter.log.error(e);
+                    				});
+            				} else {
+                				adapter.log.warn('Module serialport is not available');
+                				adapter.sendTo(obj.from, obj.command, [{label: 'Not available', value: ''}], obj.callback);
+            				}
+        				} catch (e) {
+            				adapter.sendTo(obj.from, obj.command, [{label: 'Not available', value: ''}], obj.callback);
+        				}
+    				}
+    				break;
+
 
                 case 'send':
                     sendCommand({
