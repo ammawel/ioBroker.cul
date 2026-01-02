@@ -1,12 +1,22 @@
+
 {
   "common": {
     "name": "cul",
-    "version": "2.2.2",
+    "version": "2.2.1",
     "news": {
-       "2.2.2": {
-        "en": "Select port by ID instead of name as option\nUpdated GUI for admin 6",
-        "de": "Wählen Sie Port per ID anstelle des Namens als Option\nAktualisierte GUI für admin 6"
-       },
+      "2.2.1": {
+        "en": "Try for node 22",
+        "de": "Versuch auf Node 22 anzupassen",
+        "ru": "Try for node 22",
+        "pt": "Try for node 22",
+        "nl": "Try for node 22",
+        "fr": "Try for node 22",
+        "it": "Try for node 22",
+        "es": "Try for node 22",
+        "pl": "Try for node 22",
+        "uk": "Try for node 22",
+        "zh-cn": "Try for node 22"
+      },
       "2.2.0": {
         "en": "Select port by ID instead of name as option\nUpdated GUI for admin 6",
         "de": "Wählen Sie Port per ID anstelle des Namens als Option\nAktualisierte GUI für admin 6",
@@ -149,7 +159,7 @@
     ],
     "dependencies": [
       {
-        "js-controller": ">=5.0.0"
+        "js-controller": ">=2.0.0"
       }
     ],
     "adminUI": {
