@@ -7,7 +7,7 @@
     "hobbyquaker <hq@ccu.io>",
     "bluefox <dogafox@gmail.com>"
   ],
-  "homepage": "https://github.com/DEIN_GITHUB_NAME/ioBroker.cul",
+  "homepage": "https://github.com/ammawel/ioBroker.cul",
   "license": "GPL-2.0-or-later",
   "keywords": [
     "ioBroker",
@@ -16,7 +16,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/DEIN_GITHUB_NAME/ioBroker.cul"
+    "url": "https://github.com/ammawel/ioBroker.cul"
   },
   "dependencies": {
     "cul": "^0.17.0",
@@ -32,7 +32,7 @@
     "axios": "^1.4.0"
   },
   "bugs": {
-    "url": "https://github.com/DEIN_GITHUB_NAME/ioBroker.cul/issues"
+    "url": "https://github.com/ammawel/ioBroker.cul/issues"
   },
   "main": "main.js",
   "files": [
