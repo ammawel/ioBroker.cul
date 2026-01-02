@@ -79,7 +79,8 @@ function startAdapter(options) {
     adapter.on('ready', () => {
 
         try {
-            SerialPort = require('serialport').SerialPort;
+            const sp = require('serialport'); 
+			SerialPort = sp.SerialPort || sp;
         } catch (err) {
             console.warn('Serial port is not available');
             if (adapter.supportsFeature && !adapter.supportsFeature('CONTROLLER_NPM_AUTO_REBUILD')) {
