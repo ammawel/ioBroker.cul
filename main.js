@@ -221,15 +221,16 @@ function connect() {
     });
 
     cul.on('data', (raw, obj) => {
-        adapter.log.debug(`Empfangen: ${raw}`);
-        // Dies schreibt den Wert in den info.rawData Datenpunkt
+        // Dieser Log-Eintrag MUSS im Debug-Mode erscheinen, wenn Sie eine Taste drücken
+        adapter.log.debug(`DATA-EVENT ausgelöst: ${raw}`);
+    
+        // Setzt den State im ioBroker
         adapter.setState('info.rawData', raw, true);
 
-        // Verarbeitet das Paket weiter für die Geräte-Datenpunkte
-        if (obj && obj.protocol) {
+        if (obj && obj.protocol && obj.protocol !== 'unknown') {
             handleDeviceMessage(obj);
         }
-    });
+    });   
     
     cul.on('error', err => {
         adapter.log.error('CUL Logik-Fehler: ' + err);
