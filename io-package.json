@@ -3,6 +3,8 @@
   "common": {
     "name": "cul",
     "version": "2.99.0",
+    "allowInit": true,
+    "title": "CUL/culfw",
     "news": {
       "2.99.0": {
         "en": "Adjustment for node 22",
