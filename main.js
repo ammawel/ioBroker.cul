@@ -3,7 +3,6 @@
 /* jslint node: true */
 'use strict';
 
-// Nutzt die lokale gepatchte lib (cul.js), die wir zuvor besprochen haben
 const Main = process.env.DEBUG ? require('./lib/debugCul.js') : require('./lib/cul.js');
 const adapterName = require('./package.json').name.split('.').pop();
 const utils = require('@iobroker/adapter-core');
@@ -14,7 +13,6 @@ let cul;
 const objects = {};
 let metaRoles = {};
 let connectTimeout;
-let checkConnectionTimer;
 let adapter;
 
 function startAdapter(options) {
@@ -26,32 +24,21 @@ function startAdapter(options) {
         if (state && !state.ack) {
             adapter.log.debug(`State Change ${id}, State: ${JSON.stringify(state)}`);
             const oAddr = id.split('.');
-            if (oAddr.length < 5) {
-                adapter.log.error('Invalid id used');
-                return;
-            }
+            if (oAddr.length < 5) return;
 
             const sHousecode = oAddr[3].substring(0, 4);
             const sAddress = oAddr[3].substring(4, 6);
 
             if (oAddr[2] === 'FS20' || adapter.config.experimental === true || adapter.config.experimental === 'true') {
-                switch (oAddr[4]) {
-                    case 'cmdRaw':
-                        sendCommand({ protocol: oAddr[2], housecode: sHousecode, address: sAddress, command: state.val });
-                        break;
-                    default:
-                        adapter.log.error(`Write of State ${oAddr[4]} currently not implemented`);
-                        break;
+                if (oAddr[4] === 'cmdRaw' && cul) {
+                    cul.cmd(oAddr[2], sHousecode, sAddress, state.val);
                 }
-            } else {
-                adapter.log.error('Only FS20 Devices are tested. Support: https://github.com/ioBroker/ioBroker.cul');
             }
         }
     });
 
     adapter.on('unload', callback => {
         if (connectTimeout) clearTimeout(connectTimeout);
-        if (checkConnectionTimer) clearTimeout(checkConnectionTimer);
         if (cul) {
             try {
                 cul.close();
@@ -64,27 +51,19 @@ function startAdapter(options) {
 
     adapter.on('ready', () => {
         adapter.setState('info.connection', false, true);
-        checkPort(err => {
-            if (!err || process.env.DEBUG) {
-                main();
-            } else {
-                adapter.log.error(`Cannot open port: ${err}`);
-            }
-        });
+        main();
     });
 
-    adapter.on('message', obj => {
+    adapter.on('message', async (obj) => {
         if (!obj || !obj.command) return;
-
         switch (obj.command) {
             case 'listUart':
             case 'listUart5':
                 if (obj.callback) {
-                    SerialPort.list().then(ports => {
-                        // Deine manuelle Ergänzung aus dem Original
+                    try {
+                        const ports = await SerialPort.list();
                         ports.push({ "path": "/dev/ttyUSB_CUL" });
-                        adapter.log.info(`List of ports: ${JSON.stringify(ports)}`);
-
+                        
                         if (obj.command === 'listUart5' && obj.message && obj.message.experimental) {
                             const dirSerial = '/dev/serial/by-id';
                             adapter.sendTo(obj.from, obj.command, ports.map(item => ({
@@ -93,85 +72,25 @@ function startAdapter(options) {
                             })), obj.callback);
                         } else {
                             adapter.sendTo(obj.from, obj.command, ports.map(item => ({
-                                label: item.path || item.comName,
-                                value: item.path || item.comName
+                                label: item.path,
+                                value: item.path
                             })), obj.callback);
                         }
-                    }).catch(err => {
-                        adapter.log.error(`Can not get Serial port list: ${err}`);
+                    } catch (err) {
                         adapter.sendTo(obj.from, obj.command, [], obj.callback);
-                    });
+                    }
                 }
                 break;
-
             case 'send':
-                sendCommand(obj.message);
+                if (cul) cul.cmd(obj.message.protocol, obj.message.housecode, obj.message.address, obj.message.command);
                 break;
-
             case 'sendraw':
-                sendRaw(obj.message);
-                break;
-
-            default:
-                adapter.log.error('No such command: ' + obj.command);
+                if (cul) cul.write(obj.message.command);
                 break;
         }
     });
 
     return adapter;
-}
-
-function sendCommand(o) {
-    if (cul) {
-        adapter.log.info(`Send command: Housecode: ${o.housecode}; address: ${o.address}; command: ${o.command}`);
-        cul.cmd(o.protocol, o.housecode, o.address, o.command);
-    }
-}
-
-function sendRaw(o) {
-    if (cul) {
-        adapter.log.info('Send RAW command: ' + o.command);
-        cul.write(o.command);
-    }
-}
-
-function checkConnection(host, port, timeout, callback) {
-    timeout = timeout || 10000;
-    const socket = Net.createConnection(port, host, () => {
-        if (checkConnectionTimer) clearTimeout(checkConnectionTimer);
-        socket.end();
-        callback(null);
-    });
-
-    checkConnectionTimer = setTimeout(() => {
-        socket.end();
-        callback('Timeout');
-    }, timeout);
-
-    socket.on('error', err => {
-        if (checkConnectionTimer) clearTimeout(checkConnectionTimer);
-        socket.end();
-        callback(err);
-    });
-}
-
-function checkPort(callback) {
-    if (adapter.config.type === 'cuno') {
-        checkConnection(adapter.config.ip, adapter.config.port, 10000, callback);
-    } else {
-        if (!adapter.config.serialport) return callback('Port is not selected');
-        
-        const sPort = new SerialPort({
-            path: adapter.config.serialport,
-            baudRate: parseInt(adapter.config.baudrate, 10) || 9600,
-            autoOpen: false
-        });
-
-        sPort.open(err => {
-            if (sPort.isOpen) sPort.close();
-            callback(err);
-        });
-    }
 }
 
 const tasks = [];
@@ -184,7 +103,7 @@ function processTasks() {
     } else if (task.type === 'object') {
         adapter.getForeignObject(task.id, (err, obj) => {
             if (!obj) {
-                adapter.setForeignObject(task.id, task.obj, () => {
+                adapter.setForeignObject(task.id, task.obj, (err) => {
                     adapter.log.info(`object ${task.id} created`);
                     setImmediate(processTasks);
                 });
@@ -195,6 +114,42 @@ function processTasks() {
     }
 }
 
+function handleDeviceMessage(obj) {
+    const id = obj.protocol + '.' + obj.address;
+    const fullId = adapter.namespace + '.' + id;
+
+    if (!objects[fullId]) {
+        const tmp = JSON.parse(JSON.stringify(obj));
+        delete tmp.data;
+
+        const newDevice = {
+            _id: fullId,
+            type: 'device',
+            common: { name: (obj.device ? obj.device + ' ' : '') + obj.address },
+            native: tmp
+        };
+
+        for (const _state in obj.data) {
+            if (!obj.data.hasOwnProperty(_state)) continue;
+            let common = metaRoles[obj.device + '_' + _state] || metaRoles[_state] || metaRoles['undefined'];
+            common = JSON.parse(JSON.stringify(common));
+            common.name = _state + ' ' + (obj.device ? obj.device + ' ' : '') + id;
+
+            const newState = {
+                _id: `${fullId}.${_state}`,
+                type: 'state',
+                common: common,
+                native: {}
+            };
+            objects[newState._id] = newState;
+            tasks.push({ type: 'object', id: newState._id, obj: newState });
+        }
+        objects[fullId] = newDevice;
+        tasks.push({ type: 'object', id: newDevice._id, obj: newDevice });
+    }
+    setStates(obj);
+}
+
 function setStates(obj) {
     const id = obj.protocol + '.' + obj.address;
     const isStart = !tasks.length;
@@ -203,8 +158,7 @@ function setStates(obj) {
         if (!obj.data.hasOwnProperty(state)) continue;
         const oid = `${adapter.namespace}.${id}.${state}`;
         let val = obj.data[state];
-        
-        // Typ-Konvertierung aus dem Original
+
         if (objects[oid] && objects[oid].common) {
             if (objects[oid].common.type === 'boolean') {
                 val = val === 'true' || val === true || val === 1 || val === '1' || val === 'on';
@@ -219,94 +173,64 @@ function setStates(obj) {
     if (isStart) processTasks();
 }
 
-function connect(callback) {
-    const options = {
-        connectionMode: adapter.config.type === 'cuno' ? 'telnet' : 'serial',
-        serialport: adapter.config.serialport || '/dev/ttyACM0',
+function connect() {
+    if (connectTimeout) clearTimeout(connectTimeout);
+    
+    let transport;
+    const isSerial = adapter.config.type !== 'cuno';
+
+    if (isSerial) {
+        transport = new SerialPort({
+            path: adapter.config.serialport || '/dev/ttyACM0',
+            baudRate: parseInt(adapter.config.baudrate, 10) || 38400,
+            autoOpen: true,
+            lock: false
+        });
+    } else {
+        transport = Net.createConnection(adapter.config.port, adapter.config.ip);
+    }
+
+    cul = new Main({
+        transport: transport,
+        connectionMode: isSerial ? 'serial' : 'telnet',
         mode: adapter.config.mode || 'SlowRF',
-        baudrate: parseInt(adapter.config.baudrate, 10) || 9600,
-        scc: adapter.config.type === 'scc',
-        coc: adapter.config.type === 'coc',
-        host: adapter.config.ip,
-        port: adapter.config.port,
+        initCmd: adapter.config.initCmd || 'X21',
+        parse: true,
+        rssi: true,
         debug: true,
         logger: adapter.log.debug
-    };
-
-    cul = new Main(options);
-
-    cul.on('close', () => {
-        adapter.setState('info.connection', false, true);
-        if (!connectTimeout) {
-            connectTimeout = setTimeout(() => {
-                connectTimeout = null;
-                connect();
-            }, 10000);
-        }
     });
 
     cul.on('ready', () => {
+        adapter.log.info('CUL connected and ready');
         adapter.setState('info.connection', true, true);
-        if (typeof callback === 'function') callback();
     });
-
-    cul.on('error', err => adapter.log.error('Error on Cul connection: ' + err));
 
     cul.on('data', (raw, obj) => {
         adapter.log.debug(`RAW: ${raw}, ${JSON.stringify(obj)}`);
         adapter.setState('info.rawData', raw, true);
+        if (obj && obj.protocol) handleDeviceMessage(obj);
+    });
 
-        if (!obj || !obj.protocol || (!obj.address && obj.address !== 0)) return;
-        
-        const id = obj.protocol + '.' + obj.address;
-        const isStart = !tasks.length;
+    cul.on('error', err => {
+        adapter.log.error('CUL Error: ' + err);
+        adapter.setState('info.connection', false, true);
+        if (!connectTimeout) connectTimeout = setTimeout(connect, 10000);
+    });
 
-        if (!objects[adapter.namespace + '.' + id]) {
-            const tmp = JSON.parse(JSON.stringify(obj));
-            delete tmp.data;
-
-            const newDevice = {
-                _id: adapter.namespace + '.' + id,
-                type: 'device',
-                common: { name: (obj.device ? obj.device + ' ' : '') + obj.address },
-                native: tmp
-            };
-
-            for (const _state in obj.data) {
-                if (!obj.data.hasOwnProperty(_state)) continue;
-                let common = metaRoles[obj.device + '_' + _state] || metaRoles[_state] || metaRoles['undefined'];
-                common = JSON.parse(JSON.stringify(common));
-                common.name = _state + ' ' + (obj.device ? obj.device + ' ' : '') + id;
-
-                const newState = {
-                    _id: `${adapter.namespace}.${id}.${_state}`,
-                    type: 'state',
-                    common: common,
-                    native: {}
-                };
-                objects[newState._id] = newState;
-                tasks.push({ type: 'object', id: newState._id, obj: newState });
-            }
-            objects[newDevice._id] = newDevice;
-            tasks.push({ type: 'object', id: newDevice._id, obj: newDevice });
-        }
-
-        setStates(obj);
-        if (isStart) processTasks();
+    cul.on('close', () => {
+        adapter.setState('info.connection', false, true);
+        if (!connectTimeout) connectTimeout = setTimeout(connect, 10000);
     });
 }
 
 function main() {
     adapter.getForeignObject('cul.meta.roles', (err, res) => {
-        if (err || !res) {
-            adapter.log.error('Object cul.meta.roles missing - reinstall adapter!');
-            return;
-        }
-        metaRoles = res.native;
-        
+        if (res && res.native) metaRoles = res.native;
         adapter.getForeignObjects(`${adapter.namespace}.*`, (err, list) => {
             for (const id in list) objects[id] = list[id];
-            connect(() => adapter.subscribeStates('*'));
+            connect();
+            adapter.subscribeStates('*');
         });
     });
 }
