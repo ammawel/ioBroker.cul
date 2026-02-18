@@ -3,6 +3,7 @@
 /* jslint node: true */
 'use strict';
 
+// Nutzt die lokale gepatchte Version in ./lib/cul.js
 const Main = process.env.DEBUG ? require('./lib/debugCul.js') : require('./lib/cul.js');
 const adapterName = require('./package.json').name.split('.').pop();
 const utils = require('@iobroker/adapter-core');
@@ -31,7 +32,7 @@ function startAdapter(options) {
 
             if (oAddr[2] === 'FS20' || adapter.config.experimental === true || adapter.config.experimental === 'true') {
                 if (oAddr[4] === 'cmdRaw' && cul) {
-                    cul.cmd(oAddr[2], sHousecode, sAddress, state.val);
+                    sendCommand({ protocol: oAddr[2], housecode: sHousecode, address: sAddress, command: state.val });
                 }
             }
         }
@@ -39,19 +40,13 @@ function startAdapter(options) {
 
     adapter.on('unload', callback => {
         if (connectTimeout) clearTimeout(connectTimeout);
-        if (cul) {
-            try {
-                cul.close();
-            } catch (e) {
-                adapter.log.error(`Cannot close connection: ${e.toString()}`);
-            }
-        }
+        if (cul) cul.close();
         callback();
     });
 
     adapter.on('ready', () => {
         adapter.setState('info.connection', false, true);
-        main();
+        main(); // Startet die Objekt-Initialisierung und dann connect()
     });
 
     adapter.on('message', async (obj) => {
@@ -62,7 +57,7 @@ function startAdapter(options) {
                 if (obj.callback) {
                     try {
                         const ports = await SerialPort.list();
-                        ports.push({ "path": "/dev/ttyUSB_CUL" });
+                        ports.push({ "path": "/dev/ttyUSB_CUL" }); // Deine manuelle Ergänzung
                         
                         if (obj.command === 'listUart5' && obj.message && obj.message.experimental) {
                             const dirSerial = '/dev/serial/by-id';
@@ -82,10 +77,10 @@ function startAdapter(options) {
                 }
                 break;
             case 'send':
-                if (cul) cul.cmd(obj.message.protocol, obj.message.housecode, obj.message.address, obj.message.command);
+                sendCommand(obj.message);
                 break;
             case 'sendraw':
-                if (cul) cul.write(obj.message.command);
+                sendRaw(obj.message);
                 break;
         }
     });
@@ -93,17 +88,27 @@ function startAdapter(options) {
     return adapter;
 }
 
+function sendCommand(o) {
+    if (cul) {
+        adapter.log.info(`Sending: ${o.protocol} ${o.housecode}${o.address} CMD: ${o.command}`);
+        cul.cmd(o.protocol, o.housecode, o.address, o.command);
+    }
+}
+
+function sendRaw(o) {
+    if (cul) cul.write(o.command);
+}
+
 const tasks = [];
 function processTasks() {
     if (!tasks.length) return;
     const task = tasks.shift();
-
     if (task.type === 'state') {
         adapter.setForeignState(task.id, task.val, true, () => setImmediate(processTasks));
     } else if (task.type === 'object') {
         adapter.getForeignObject(task.id, (err, obj) => {
             if (!obj) {
-                adapter.setForeignObject(task.id, task.obj, (err) => {
+                adapter.setForeignObject(task.id, task.obj, () => {
                     adapter.log.info(`object ${task.id} created`);
                     setImmediate(processTasks);
                 });
@@ -121,14 +126,12 @@ function handleDeviceMessage(obj) {
     if (!objects[fullId]) {
         const tmp = JSON.parse(JSON.stringify(obj));
         delete tmp.data;
-
         const newDevice = {
             _id: fullId,
             type: 'device',
             common: { name: (obj.device ? obj.device + ' ' : '') + obj.address },
             native: tmp
         };
-
         for (const _state in obj.data) {
             if (!obj.data.hasOwnProperty(_state)) continue;
             let common = metaRoles[obj.device + '_' + _state] || metaRoles[_state] || metaRoles['undefined'];
@@ -153,16 +156,15 @@ function handleDeviceMessage(obj) {
 function setStates(obj) {
     const id = obj.protocol + '.' + obj.address;
     const isStart = !tasks.length;
-
     for (const state in obj.data) {
         if (!obj.data.hasOwnProperty(state)) continue;
         const oid = `${adapter.namespace}.${id}.${state}`;
         let val = obj.data[state];
-
-        if (objects[oid] && objects[oid].common) {
-            if (objects[oid].common.type === 'boolean') {
+        const meta = objects[oid];
+        if (meta && meta.common) {
+            if (meta.common.type === 'boolean') {
                 val = val === 'true' || val === true || val === 1 || val === '1' || val === 'on';
-            } else if (objects[oid].common.type === 'number') {
+            } else if (meta.common.type === 'number') {
                 if (val === 'on' || val === 'true' || val === true) val = 1;
                 if (val === 'off' || val === 'false' || val === false) val = 0;
                 val = parseFloat(val);
@@ -175,7 +177,6 @@ function setStates(obj) {
 
 function connect() {
     if (connectTimeout) clearTimeout(connectTimeout);
-    
     let transport;
     const isSerial = adapter.config.type !== 'cuno';
 
@@ -196,29 +197,19 @@ function connect() {
         mode: adapter.config.mode || 'SlowRF',
         initCmd: adapter.config.initCmd || 'X21',
         parse: true,
-        rssi: true,
-        debug: true,
-        logger: adapter.log.debug
+        rssi: true
     });
 
     cul.on('ready', () => {
-        adapter.log.info('CUL connected and ready');
         adapter.setState('info.connection', true, true);
     });
 
     cul.on('data', (raw, obj) => {
-        adapter.log.debug(`RAW: ${raw}, ${JSON.stringify(obj)}`);
         adapter.setState('info.rawData', raw, true);
         if (obj && obj.protocol) handleDeviceMessage(obj);
     });
 
     cul.on('error', err => {
-        adapter.log.error('CUL Error: ' + err);
-        adapter.setState('info.connection', false, true);
-        if (!connectTimeout) connectTimeout = setTimeout(connect, 10000);
-    });
-
-    cul.on('close', () => {
         adapter.setState('info.connection', false, true);
         if (!connectTimeout) connectTimeout = setTimeout(connect, 10000);
     });
@@ -227,16 +218,16 @@ function connect() {
 function main() {
     adapter.getForeignObject('cul.meta.roles', (err, res) => {
         if (res && res.native) metaRoles = res.native;
-        adapter.getForeignObjects(`${adapter.namespace}.*`, (err, list) => {
-            for (const id in list) objects[id] = list[id];
-            connect();
-            adapter.subscribeStates('*');
+        // Lädt bestehende Geräte und Zustände in den Cache
+        adapter.getObjectView('system', 'device', { startkey: adapter.namespace + '.', endkey: adapter.namespace + '.\u9999' }, (err, res) => {
+            if (res) res.rows.forEach(row => objects[row.id] = row.value);
+            adapter.getObjectView('system', 'state', { startkey: adapter.namespace + '.', endkey: adapter.namespace + '.\u9999' }, (err, res) => {
+                if (res) res.rows.forEach(row => objects[row.id] = row.value);
+                connect();
+                adapter.subscribeStates('*');
+            });
         });
     });
 }
 
-if (module && module.parent) {
-    module.exports = startAdapter;
-} else {
-    startAdapter();
-}
+startAdapter();
