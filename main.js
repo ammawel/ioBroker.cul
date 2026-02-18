@@ -184,17 +184,23 @@ function connect() {
         const portPath = adapter.config.serialport || '/dev/ttyACM0';
         const baudRate = parseInt(adapter.config.baudrate, 10) || 38400;
         
-        adapter.log.info(`Öffne Serialport ${portPath} mit ${baudRate} Baud`);
+        adapter.log.info(`Öffne Serialport ${portPath} mit ${baudRate} Baud (inkl. DTR/RTS)`);
         
         transport = new SerialPort({
             path: portPath,
             baudRate: baudRate,
             autoOpen: true,
-            lock: false
+            lock: false,
+            // Hinzugefügt für Kompatibilität mit nanoCUL:
+            hupcl: false 
         });
 
         transport.on('open', () => {
             adapter.log.info('Physikalischer Serialport wurde erfolgreich geöffnet');
+            // DTR auf true setzen ist bei vielen nanoCULs der "Türöffner" für Empfangsdaten
+            transport.set({ dtr: true, rts: true }, (err) => {
+                if (err) adapter.log.warn('Fehler beim Setzen der Port-Signale: ' + err.message);
+            });
         });
 
         transport.on('error', (err) => {
