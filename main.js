@@ -57,7 +57,7 @@ function startAdapter(options) {
                 if (obj.callback) {
                     try {
                         const ports = await SerialPort.list();
-                        ports.push({ "path": "/dev/ttyUSB_CUL" }); // Deine manuelle Ergänzung
+                        ports.push({ "path": "/dev/ttyUSB_CUL" }); // Manuelle Ergänzung für spezifische Pfade
                         
                         if (obj.command === 'listUart5' && obj.message && obj.message.experimental) {
                             const dirSerial = '/dev/serial/by-id';
@@ -181,13 +181,28 @@ function connect() {
     const isSerial = adapter.config.type !== 'cuno';
 
     if (isSerial) {
+        const portPath = adapter.config.serialport || '/dev/ttyACM0';
+        const baudRate = parseInt(adapter.config.baudrate, 10) || 38400;
+        
+        adapter.log.info(`Öffne Serialport ${portPath} mit ${baudRate} Baud`);
+        
         transport = new SerialPort({
-            path: adapter.config.serialport || '/dev/ttyACM0',
-            baudRate: parseInt(adapter.config.baudrate, 10) || 38400,
+            path: portPath,
+            baudRate: baudRate,
             autoOpen: true,
             lock: false
         });
+
+        transport.on('open', () => {
+            adapter.log.info('Physikalischer Serialport wurde erfolgreich geöffnet');
+        });
+
+        transport.on('error', (err) => {
+            adapter.log.error('Physikalischer Serialport Fehler: ' + err.message);
+        });
+
     } else {
+        adapter.log.info(`Verbinde mit CUNO/Netzwerk: ${adapter.config.ip}:${adapter.config.port}`);
         transport = Net.createConnection(adapter.config.port, adapter.config.ip);
     }
 
@@ -201,13 +216,14 @@ function connect() {
     });
 
     cul.on('ready', () => {
+        adapter.log.info('CUL connected and ready (Handshake erfolgreich)');
         adapter.setState('info.connection', true, true);
     });
 
     cul.on('data', (raw, obj) => {
         adapter.log.debug(`Empfangen: ${raw}`);
         // Dies schreibt den Wert in den info.rawData Datenpunkt
-        adapter.setState('info.rawData', raw, true); 
+        adapter.setState('info.rawData', raw, true);
 
         // Verarbeitet das Paket weiter für die Geräte-Datenpunkte
         if (obj && obj.protocol) {
@@ -216,6 +232,7 @@ function connect() {
     });
     
     cul.on('error', err => {
+        adapter.log.error('CUL Logik-Fehler: ' + err);
         adapter.setState('info.connection', false, true);
         if (!connectTimeout) connectTimeout = setTimeout(connect, 10000);
     });
@@ -224,9 +241,12 @@ function connect() {
 function main() {
     adapter.getForeignObject('cul.meta.roles', (err, res) => {
         if (res && res.native) metaRoles = res.native;
-        // Lädt bestehende Geräte und Zustände in den Cache
+        
+        // Lädt bestehende Geräte in den Cache
         adapter.getObjectView('system', 'device', { startkey: adapter.namespace + '.', endkey: adapter.namespace + '.\u9999' }, (err, res) => {
             if (res) res.rows.forEach(row => objects[row.id] = row.value);
+            
+            // Lädt bestehende Zustände in den Cache
             adapter.getObjectView('system', 'state', { startkey: adapter.namespace + '.', endkey: adapter.namespace + '.\u9999' }, (err, res) => {
                 if (res) res.rows.forEach(row => objects[row.id] = row.value);
                 connect();
