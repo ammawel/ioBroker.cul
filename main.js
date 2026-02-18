@@ -57,7 +57,7 @@ function startAdapter(options) {
                 if (obj.callback) {
                     try {
                         const ports = await SerialPort.list();
-                        ports.push({ "path": "/dev/ttyUSB_CUL" }); // Manuelle Ergänzung für spezifische Pfade
+                        ports.push({ "path": "/dev/ttyUSB_CUL" });
                         
                         if (obj.command === 'listUart5' && obj.message && obj.message.experimental) {
                             const dirSerial = '/dev/serial/by-id';
@@ -184,20 +184,19 @@ function connect() {
         const portPath = adapter.config.serialport || '/dev/ttyACM0';
         const baudRate = parseInt(adapter.config.baudrate, 10) || 38400;
         
-        adapter.log.info(`Öffne Serialport ${portPath} mit ${baudRate} Baud (inkl. DTR/RTS)`);
+        adapter.log.info(`Öffne Serialport ${portPath} mit ${baudRate} Baud`);
         
         transport = new SerialPort({
             path: portPath,
             baudRate: baudRate,
             autoOpen: true,
             lock: false,
-            // Hinzugefügt für Kompatibilität mit nanoCUL:
             hupcl: false 
         });
 
         transport.on('open', () => {
             adapter.log.info('Physikalischer Serialport wurde erfolgreich geöffnet');
-            // DTR auf true setzen ist bei vielen nanoCULs der "Türöffner" für Empfangsdaten
+            // DTR/RTS setzen für stabilen Datenfluss bei nanoCULs
             transport.set({ dtr: true, rts: true }, (err) => {
                 if (err) adapter.log.warn('Fehler beim Setzen der Port-Signale: ' + err.message);
             });
@@ -227,11 +226,10 @@ function connect() {
     });
 
     cul.on('data', (raw, obj) => {
-        // Dieser Log-Eintrag MUSS im Debug-Mode erscheinen, wenn Sie eine Taste drücken
         adapter.log.debug(`DATA-EVENT ausgelöst: ${raw}`);
     
-        // Setzt den State im ioBroker
-        adapter.setState('info.rawData', raw, true);
+        // Schreibt Rohdaten (inkl. Echos) in den Datenpunkt
+        adapter.setState('info.rawData', raw, true); 
 
         if (obj && obj.protocol && obj.protocol !== 'unknown') {
             handleDeviceMessage(obj);
@@ -249,11 +247,9 @@ function main() {
     adapter.getForeignObject('cul.meta.roles', (err, res) => {
         if (res && res.native) metaRoles = res.native;
         
-        // Lädt bestehende Geräte in den Cache
         adapter.getObjectView('system', 'device', { startkey: adapter.namespace + '.', endkey: adapter.namespace + '.\u9999' }, (err, res) => {
             if (res) res.rows.forEach(row => objects[row.id] = row.value);
             
-            // Lädt bestehende Zustände in den Cache
             adapter.getObjectView('system', 'state', { startkey: adapter.namespace + '.', endkey: adapter.namespace + '.\u9999' }, (err, res) => {
                 if (res) res.rows.forEach(row => objects[row.id] = row.value);
                 connect();
