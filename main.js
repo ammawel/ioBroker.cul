@@ -205,10 +205,16 @@ function connect() {
     });
 
     cul.on('data', (raw, obj) => {
-        adapter.setState('info.rawData', raw, true);
-        if (obj && obj.protocol) handleDeviceMessage(obj);
-    });
+        adapter.log.debug(`Empfangen: ${raw}`);
+        // Dies schreibt den Wert in den info.rawData Datenpunkt
+        adapter.setState('info.rawData', raw, true); 
 
+        // Verarbeitet das Paket weiter für die Geräte-Datenpunkte
+        if (obj && obj.protocol) {
+            handleDeviceMessage(obj);
+        }
+    });
+    
     cul.on('error', err => {
         adapter.setState('info.connection', false, true);
         if (!connectTimeout) connectTimeout = setTimeout(connect, 10000);
